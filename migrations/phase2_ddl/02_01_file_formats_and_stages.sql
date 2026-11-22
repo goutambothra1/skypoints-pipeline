@@ -56,11 +56,12 @@ CREATE STAGE IF NOT EXISTS SKYPOINTS_DB.RAW.STG_MEMBER_INDIA
 
 CREATE STAGE IF NOT EXISTS SKYPOINTS_DB.RAW.STG_MEMBER_USA
     FILE_FORMAT             = SKYPOINTS_DB.RAW.FF_MEMBER_CSV
-    COMMENT                 = 'USA member feed (YYYY-MM-DD dates, possible NULL strings, invalid dates)';
+    COMMENT                 = 'USA member feed (unpadded MMDDYYYY dates, 5 columns, no DOB)';
 
-CREATE STAGE IF NOT EXISTS SKYPOINTS_DB.RAW.STG_MEMBER_CANADA
-    FILE_FORMAT             = SKYPOINTS_DB.RAW.FF_MEMBER_CSV
-    COMMENT                 = 'Canada member feed (unpadded MMDDYYYY dates, e.g. 6152022)';
+-- STG_MEMBER_AUS accepts both CSV (COPY INTO) and XLSX (SP_LOAD_AUS_XLSX).
+-- No FILE_FORMAT set so the stage can hold any file type.
+CREATE STAGE IF NOT EXISTS SKYPOINTS_DB.RAW.STG_MEMBER_AUS
+    COMMENT                 = 'Australia member feed — CSV or XLSX (use SP_LOAD_AUS_XLSX for .xlsx files)';
 
 CREATE STAGE IF NOT EXISTS SKYPOINTS_DB.RAW.STG_REDEMPTIONS
     FILE_FORMAT             = SKYPOINTS_DB.RAW.FF_REDEMPTIONS_JSON
