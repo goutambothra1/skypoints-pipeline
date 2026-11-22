@@ -1,0 +1,57 @@
+
+-- LATERAL FLATTEN expands the redemptions[] array inside each
+-- NDJSON object.  One RAW row (one member feed) can contain
+-- multiple transactions.
+--
+-- Quarantine rules (routed BEFORE the MERGE):
+--   INVALID_STATUS     : status not in (PENDING, COMPLETED, CANCELLED)
+--   NEG_OR_ZERO_MILES  : miles_redeemed <= 0
+--   ORPHAN_MEMBER      : member_id not found in any CORE country table
+--
+-- MERGE dedup: within a batch, the row with the highest
+-- FILE_ROW_NUM wins per TXN_ID (QUALIFY ROW_NUMBER()).
+-- This handles PENDING → COMPLETED re-sends in the same file.
+--
+-- Status transition: MERGE WHEN MATCHED UPDATE always applies
+-- the latest status.  No backward-transition guard is enforced
+-- (documented assumption A10 in README).
+-- =============================================================
+
+USE DATABASE SKYPOINTS_DB; USE WAREHOUSE WH_SKYPOINTS;
+
+CREATE OR REPLACE VIEW SKYPOINTS_DB.CORE.V_ALL_MEMBERS
+COMMENT = 'Union of all country member tables — use for cross-country queries and redemption joins'
+AS
+SELECT MEMBER_SK,MEMBER_ID,MEMBER_NAME,ENROLLMENT_DATE,LAST_FLIGHT_DATE,
+       TIER_CODE,AGENT_NAME,STATE,COUNTRY,DOB,IS_ACTIVE,MEMBER_TYPE,
+       AGE,STALE_MEMBER,SOURCE_FILE,LOAD_TS,DW_INSERT_TS,DW_UPDATE_TS,
+       'TABLE_INDIA' AS SOURCE_TABLE
+FROM SKYPOINTS_DB.CORE.TABLE_INDIA
+UNION ALL
+SELECT MEMBER_SK,MEMBER_ID,MEMBER_NAME,ENROLLMENT_DATE,LAST_FLIGHT_DATE,
+       TIER_CODE,AGENT_NAME,STATE,COUNTRY,DOB,IS_ACTIVE,MEMBER_TYPE,
+       AGE,STALE_MEMBER,SOURCE_FILE,LOAD_TS,DW_INSERT_TS,DW_UPDATE_TS,
+       'TABLE_USA'
+FROM SKYPOINTS_DB.CORE.TABLE_USA
+UNION ALL
+SELECT MEMBER_SK,MEMBER_ID,MEMBER_NAME,ENROLLMENT_DATE,LAST_FLIGHT_DATE,
+       TIER_CODE,AGENT_NAME,STATE,COUNTRY,DOB,IS_ACTIVE,MEMBER_TYPE,
+       AGE,STALE_MEMBER,SOURCE_FILE,LOAD_TS,DW_INSERT_TS,DW_UPDATE_TS,
+       'TABLE_CANADA'
+FROM SKYPOINTS_DB.CORE.TABLE_CANADA
+UNION ALL
+SELECT MEMBER_SK,MEMBER_ID,MEMBER_NAME,ENROLLMENT_DATE,LAST_FLIGHT_DATE,
+       TIER_CODE,AGENT_NAME,STATE,COUNTRY,DOB,IS_ACTIVE,MEMBER_TYPE,
+       AGE,STALE_MEMBER,SOURCE_FILE,LOAD_TS,DW_INSERT_TS,DW_UPDATE_TS,
+       'TABLE_OTHER'
+FROM SKYPOINTS_DB.CORE.TABLE_OTHER;
+
+-- See SP_LOAD_REDEMPTIONS definition in Snowflake
+-- (created live during pipeline execution — Phase 7 step)
+
+-- Example join: member details + their redemptions
+SELECT m.MEMBER_NAME, m.COUNTRY, m.TIER_CODE,
+       r.TXN_ID, r.PARTNER, r.MILES_REDEEMED, r.STATUS
+FROM   SKYPOINTS_DB.CORE.REDEMPTIONS_FLAT r
+JOIN   SKYPOINTS_DB.CORE.V_ALL_MEMBERS    m ON m.MEMBER_ID = r.MEMBER_ID
+ORDER  BY m.MEMBER_NAME, r.TXN_ID;
